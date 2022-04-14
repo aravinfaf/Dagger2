@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.aravind.dagger2.Constants
 import com.aravind.dagger2.R
+import com.aravind.dagger2.mvc.QuestionListMvc
 import com.aravind.dagger2.networking.StackOverflowApi
 import com.aravind.dagger2.questions.Questions
 import kotlinx.coroutines.*
@@ -26,39 +27,28 @@ import java.lang.Exception
 import java.util.ArrayList
 
 
-class QuestionsActivity : AppCompatActivity() {
+class QuestionsActivity : AppCompatActivity(), QuestionListMvc.Listener {
 
-    lateinit var recyclerView: RecyclerView
-    lateinit var swipeRefreshLayout: SwipeRefreshLayout
-    private var isDataLoad = false
+   private var isDataLoad = false
     lateinit var stackOverflowApi: StackOverflowApi
-    private var adapter : QuestionAdapter? = null
 
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var toolBar : Toolbar? = null
 
+    lateinit var questionListMvc : QuestionListMvc
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_questions)
+        questionListMvc = QuestionListMvc(LayoutInflater.from(this),null)
+        setContentView(questionListMvc.rootView)
 
         toolBar = findViewById(R.id.toolbar)
-        swipeRefreshLayout = findViewById(R.id.swipeRefresh)
-        recyclerView = findViewById(R.id.recyclerview)
 
         setSupportActionBar(toolBar)
 
         if (supportActionBar != null){
             supportActionBar?.setDisplayShowTitleEnabled(true)
             supportActionBar?.title = "Question list"
-        }
-
-        recyclerView.layoutManager = LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
-
-        adapter = QuestionAdapter { clickedQuestion ->
-            QuestionDetailActivity.start(this,clickedQuestion.id)
-        }
-        swipeRefreshLayout.setOnRefreshListener {
-            fetchQuestions()
         }
 
         val interceptor = HttpLoggingInterceptor()
@@ -75,20 +65,19 @@ class QuestionsActivity : AppCompatActivity() {
 
     private fun fetchQuestions() {
         coroutineScope.launch {
-            showProgressIndicator()
+            questionListMvc.showProgressIndicator()
 
             try {
                 val response = stackOverflowApi.lastActiveQuestions(20)
 
                 if (response.isSuccessful && response != null){
-                    adapter?.bindData(response.body()!!.questionsList)
-                    recyclerView.adapter = adapter
+                    questionListMvc.bindQuestions(response.body()!!.questionsList)
+                    questionListMvc.recyclerView.adapter = questionListMvc.adapter
                     isDataLoad = true
 
                     response.body()!!.questionsList.forEach {
                         Log.d("Q",it.title)
                     }
-
                 }
                 else{
                     Toast.makeText(applicationContext,"Error",Toast.LENGTH_LONG).show()
@@ -97,23 +86,15 @@ class QuestionsActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
-                hideProgressIndicator()
+                questionListMvc.hideProgressIndicator()
             }
         }
     }
 
-    private fun hideProgressIndicator() {
-        if (swipeRefreshLayout.isRefreshing) {
-            swipeRefreshLayout.isRefreshing = false
-        }
-    }
-
-    private fun showProgressIndicator() {
-        swipeRefreshLayout.isRefreshing = true
-    }
 
     override fun onStart() {
         super.onStart()
+        questionListMvc.registerListener(this)
         if (!isDataLoad) {
             fetchQuestions()
         }
@@ -121,40 +102,16 @@ class QuestionsActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+        questionListMvc.unRegisterListener(this)
         coroutineScope.coroutineContext.cancelChildren()
     }
-}
 
-class QuestionAdapter(
-    val QuestionClickListener : (Questions) -> Unit
-) : RecyclerView.Adapter<QuestionAdapter.ViewHolder>() {
-
-    private var list: List<Questions> = ArrayList(0)
-
-    inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val textTitle: TextView = view.findViewById(R.id.text_title)
+    override fun onRefreshClicked() {
+        fetchQuestions()
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): QuestionAdapter.ViewHolder {
-        return ViewHolder(
-            LayoutInflater.from(parent.context).inflate(R.layout.adapter_layout, null, false)
-        )
+    override fun onQuestionClickedPosition(questions: Questions) {
+        QuestionDetailActivity.start(this,questions.id)
     }
 
-    override fun onBindViewHolder(holder: QuestionAdapter.ViewHolder, position: Int) {
-        holder.textTitle.text = list[position].title
-        Log.d("Title","${list[position].title}")
-
-        holder.textTitle.setOnClickListener {
-            QuestionClickListener.invoke(list[position])
-        }
-    }
-
-    override fun getItemCount(): Int = list.size
-
-    fun bindData(questionList: List<Questions>) {
-        this.list = questionList
-        Log.d("SSss","${questionList.size}")
-        notifyDataSetChanged()
-    }
 }
