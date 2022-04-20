@@ -9,18 +9,21 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.aravind.dagger2.R
+import com.aravind.dagger2.base.BaseView
 import com.aravind.dagger2.questions.Questions
 import java.util.HashSet
 
 class QuestionListMvc(
      layoutinflater: LayoutInflater,
      parent: ViewGroup?,
+) : BaseView<QuestionListMvc.Listener>(
+    layoutinflater,
+    parent,
+    R.layout.activity_questions
 ) {
     var recyclerView: RecyclerView
     var swipeRefreshLayout: SwipeRefreshLayout
     var adapter: QuestionAdapter? = null
-
-    var rootView: View
 
     interface Listener {
         fun onRefreshClicked()
@@ -28,7 +31,6 @@ class QuestionListMvc(
     }
 
     init {
-        rootView = layoutinflater.inflate(R.layout.activity_questions, parent, false)
         swipeRefreshLayout = rootView.findViewById(R.id.swipeRefresh)
         recyclerView = rootView.findViewById(R.id.recyclerview)
 
@@ -45,15 +47,6 @@ class QuestionListMvc(
                 listener.onQuestionClickedPosition(clickedQuestion)
             }
         }
-    }
-    private val listeners = HashSet<Listener>()
-
-    fun registerListener(listener: Listener) {
-        listeners.add(listener)
-    }
-
-    fun unRegisterListener(listener: Listener) {
-        listeners.remove(listener)
     }
 
     fun hideProgressIndicator() {

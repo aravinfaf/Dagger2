@@ -6,13 +6,12 @@ import android.os.Build
 import android.os.Bundle
 import android.text.Html
 import android.util.Log
-import android.widget.TextView
+import android.view.LayoutInflater
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.aravind.dagger2.Constants
 import com.aravind.dagger2.R
+import com.aravind.dagger2.mvc.QuestionDetailMvc
 import com.aravind.dagger2.networking.StackOverflowApi
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
@@ -20,34 +19,30 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
-class QuestionDetailActivity : AppCompatActivity() {
+class QuestionDetailActivity : AppCompatActivity(),QuestionDetailMvc.Listener {
 
     private var questionId: String? = null
     lateinit var stackOverflowApi: StackOverflowApi
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    lateinit var swipeRefreshLayout: SwipeRefreshLayout
-    private lateinit var detailTextview: TextView
-    private var toolBar : Toolbar? = null
+    private var questionDetailMvc : QuestionDetailMvc? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_question_detail)
-        swipeRefreshLayout = findViewById(R.id.swipeRefresh)
-        swipeRefreshLayout.isEnabled = false
-        detailTextview = findViewById(R.id.detailTextview)
-        toolBar = findViewById(R.id.toolbar)
+        questionDetailMvc = QuestionDetailMvc(LayoutInflater.from(this),null)
+        setContentView(questionDetailMvc!!.rootView)
 
-        setSupportActionBar(toolBar)
+        setSupportActionBar(questionDetailMvc?.toolBar)
 
         if (supportActionBar != null){
             supportActionBar?.setDisplayHomeAsUpEnabled(true)
             supportActionBar?.setDisplayShowTitleEnabled(true)
             supportActionBar?.title = "Question Detail"
         }
-        toolBar?.setNavigationOnClickListener {
+        questionDetailMvc?.toolBar?.setNavigationOnClickListener {
             onBackPressed()
         }
         questionId = intent.getStringExtra(EXTRA_QUESTION_ID)
+        questionDetailMvc?.swipeRefreshLayout?.isEnabled = false
 
         val interceptor = HttpLoggingInterceptor()
         interceptor.level = (HttpLoggingInterceptor.Level.BODY)
@@ -60,7 +55,6 @@ class QuestionDetailActivity : AppCompatActivity() {
             .build()
         stackOverflowApi = retrofit.create(StackOverflowApi::class.java)
 
-        fetchQuestions()
     }
 
     companion object {
@@ -76,7 +70,7 @@ class QuestionDetailActivity : AppCompatActivity() {
 
     private fun fetchQuestions() {
         coroutineScope.launch {
-            showProgressIndicator()
+            questionDetailMvc?.showProgressIndicator()
 
             try {
                 val response = stackOverflowApi.questionDetails(questionId!!)
@@ -84,11 +78,12 @@ class QuestionDetailActivity : AppCompatActivity() {
                 if (response.isSuccessful && response.body() != null) {
                     val questionBody = response.body()!!.quesId.title
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                        detailTextview.text = Html.fromHtml(questionBody,Html.FROM_HTML_MODE_LEGACY)
+                        questionDetailMvc?.detailTextview?.text = Html.fromHtml(questionBody,Html.FROM_HTML_MODE_LEGACY)
                     }//response.body()!!.quesId.question
                     else{
-                        detailTextview.text = Html.fromHtml(questionBody)
+                        questionDetailMvc?.detailTextview?.text = Html.fromHtml(questionBody)
                     }
+                    questionDetailMvc?.hideProgressIndicator()
                     Log.d("RR","${response.body()!!.quesId.title} Qid $questionId")
                 } else {
                     Toast.makeText(applicationContext, "Error", Toast.LENGTH_LONG).show()
@@ -97,24 +92,25 @@ class QuestionDetailActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
-                hideProgressIndicator()
+                questionDetailMvc?.hideProgressIndicator()
             }
         }
     }
 
-    private fun hideProgressIndicator() {
-        if (swipeRefreshLayout.isRefreshing) {
-            swipeRefreshLayout.isRefreshing = false
-        }
-    }
-
-    private fun showProgressIndicator() {
-        swipeRefreshLayout.isRefreshing = true
+    override fun onStart() {
+        super.onStart()
+        fetchQuestions()
+        questionDetailMvc?.registerListener(this)
     }
 
     override fun onStop() {
         super.onStop()
         coroutineScope.coroutineContext.cancelChildren()
+        questionDetailMvc?.unRegisterListener(this)
+    }
+
+    override fun onBackPress() {
+
     }
 
 }
