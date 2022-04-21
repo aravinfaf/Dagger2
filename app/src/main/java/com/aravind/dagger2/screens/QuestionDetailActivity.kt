@@ -13,48 +13,38 @@ import com.aravind.dagger2.Constants
 import com.aravind.dagger2.R
 import com.aravind.dagger2.mvc.QuestionDetailMvc
 import com.aravind.dagger2.networking.StackOverflowApi
+import com.aravind.dagger2.usecase.QuestionsDetailUseCase
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
-class QuestionDetailActivity : AppCompatActivity(),QuestionDetailMvc.Listener {
+class QuestionDetailActivity : AppCompatActivity(), QuestionDetailMvc.Listener {
 
     private var questionId: String? = null
-    lateinit var stackOverflowApi: StackOverflowApi
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private var questionDetailMvc : QuestionDetailMvc? = null
-
+    private var questionDetailMvc: QuestionDetailMvc? = null
+    private lateinit var questionsDetailUseCase: QuestionsDetailUseCase
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        questionDetailMvc = QuestionDetailMvc(LayoutInflater.from(this),null)
+        questionDetailMvc = QuestionDetailMvc(LayoutInflater.from(this), null)
         setContentView(questionDetailMvc!!.rootView)
 
         setSupportActionBar(questionDetailMvc?.toolBar)
 
-        if (supportActionBar != null){
+        if (supportActionBar != null) {
             supportActionBar?.setDisplayHomeAsUpEnabled(true)
             supportActionBar?.setDisplayShowTitleEnabled(true)
             supportActionBar?.title = "Question Detail"
         }
+
+        questionsDetailUseCase = QuestionsDetailUseCase()
         questionDetailMvc?.toolBar?.setNavigationOnClickListener {
             onBackPressed()
         }
         questionId = intent.getStringExtra(EXTRA_QUESTION_ID)
         questionDetailMvc?.swipeRefreshLayout?.isEnabled = false
-
-        val interceptor = HttpLoggingInterceptor()
-        interceptor.level = (HttpLoggingInterceptor.Level.BODY)
-        val client: OkHttpClient = OkHttpClient.Builder().addInterceptor(interceptor).build()
-
-
-        var retrofit = Retrofit.Builder().baseUrl(Constants.BASE_URL)
-            .client(client)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-        stackOverflowApi = retrofit.create(StackOverflowApi::class.java)
-
     }
 
     companion object {
@@ -72,22 +62,21 @@ class QuestionDetailActivity : AppCompatActivity(),QuestionDetailMvc.Listener {
         coroutineScope.launch {
             questionDetailMvc?.showProgressIndicator()
 
-            try {
-                val response = stackOverflowApi.questionDetails(questionId!!)
-
-                if (response.isSuccessful && response.body() != null) {
-                    val questionBody = response.body()!!.quesId.title
+            val response = questionsDetailUseCase.questionsDetailsList(questionId!!)
+            when(response){
+                is QuestionsDetailUseCase.Result.Success -> {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                        questionDetailMvc?.detailTextview?.text = Html.fromHtml(questionBody,Html.FROM_HTML_MODE_LEGACY)
+                        questionDetailMvc?.detailTextview?.text =
+                            Html.fromHtml(response.quesId, Html.FROM_HTML_MODE_LEGACY)
                     }//response.body()!!.quesId.question
-                    else{
-                        questionDetailMvc?.detailTextview?.text = Html.fromHtml(questionBody)
+                    else {
+                        questionDetailMvc?.detailTextview?.text = Html.fromHtml(response.quesId)
                     }
                     questionDetailMvc?.hideProgressIndicator()
-                    Log.d("RR","${response.body()!!.quesId.title} Qid $questionId")
-                } else {
-                    Toast.makeText(applicationContext, "Error", Toast.LENGTH_LONG).show()
                 }
+            }
+
+            try {
 
             } catch (e: Exception) {
                 e.printStackTrace()
